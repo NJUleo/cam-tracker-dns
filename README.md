@@ -130,4 +130,4 @@ If integrating with a Python script that updates `/etc/dnsmasq.cam.hosts`, you m
 1. Update the file.
 2. Restart dnsmasq.
 3. Optionally validate with `dig`.
-# cam-tracker-dns
+

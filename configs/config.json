@@ -1,0 +1,10 @@
+{
+    "mappings": {
+        "00:40:7f:8a:2a:79": "garage-cam.home",
+        "00:40:7f:8a:2b:2c": "front-cam.home",
+        "00:40:7f:8a:2a:b9": "right-cam.home",
+        "00:40:7f:8a:2b:34": "left-cam.home"
+    },
+    "subnet": "10.1.1.0/24",
+    "interface": "eth0"
+}
