@@ -103,28 +103,41 @@ def read_dnsmasq_hosts():
 
     return mac_to_ip
 
-
+# return true if changed
 def verify_and_update():
+    global failure_counts
     changes_detected = False
     current_mac_to_ip = read_dnsmasq_hosts()
 
     for mac, hostname in config_mac_to_host.items():
         current_ip = current_mac_to_ip.get(mac)
-        if not current_ip:
-            changes_detected = True
-            logging.warning(f"IP not found for {hostname} ({mac}). Running ARP scan.")
-            break
-
-        reachable = ping(current_ip)
+        reachable = ping(current_ip) if current_ip else False
         mac_now = get_mac_from_ip(current_ip) if reachable else None
 
-        if not reachable or not mac_now or mac_now.lower() != mac:
-            logging.warning(f"IP mismatch or unreachable for {hostname} ({mac}). Running ARP scan.")
+        match = reachable and mac_now and mac_now.lower() == mac.lower()
+
+        if match:
+            failure_counts[mac] = 0  # reset
+            continue
+
+        # increment failure count
+        failure_counts[mac] = failure_counts.get(mac, 0) + 1
+        attempt = failure_counts[mac]
+
+        # only scan on exponential backoff attempts
+        if attempt in [1, 2, 4, 8, 16] or attempt % 16 == 0:
+            logging.warning(f"Issue with {hostname} ({mac}), failure count = {attempt}. Running ARP scan.")
             changes_detected = True
             break
+        else:
+            logging.info(f"Issue with {hostname} ({mac}), failure count = {attempt}. Skipping scan for now.")
 
     if changes_detected:
         scan_and_update_dnsmasq_hosts()
+        return True
+    else:
+        return False
+
 
 def ping(ip):
     result = subprocess.run(['ping', '-c', '1', '-W', '1', ip], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -141,12 +154,21 @@ def scan_and_update_dnsmasq_hosts():
             known_mac_to_ip[mac] = ip
             logging.info(f"Discovered {hostname} at {ip}")
         else:
-            logging.warning(f"MAC {mac} ({hostname}) not found in initial scan.")
+            logging.warning(f"MAC {mac} ({hostname}) not found in ARP scan.")
     update_dnsmasq_hosts(known_mac_to_ip)
 
 def tracker_loop():
+    count = 10
     while True:
-        verify_and_update()
+        changed = verify_and_update()
+        if not changed:
+            count -= 1
+            if count <= 0:
+                logging.info("No changes detected in the last 10 intervals.")
+                count = 10
+        else:
+            count = 10
+        
         time.sleep(CHECK_INTERVAL)
 
 def main():
@@ -159,7 +181,7 @@ def main():
 
 if __name__ == "__main__":
     try:
-        logging.info("test")
+        logging.info("starting camera IP tracker.")
         main()
     except Exception as e:
         logging.exception(f"Fatal error: {e}")
